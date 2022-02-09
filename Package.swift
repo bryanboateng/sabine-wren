@@ -4,11 +4,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "sabine-wren",
+    name: "SabineWren",
     products: [
         .executable(
-            name: "sabine-wren",
-            targets: ["sabine-wren"]),
+            name: "SabineWren",
+            targets: ["SabineWren"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
@@ -16,13 +16,13 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "sabine-wren",
+            name: "SabineWren",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Collections", package: "swift-collections")
             ]),
         .testTarget(
-            name: "sabine-wrenTests",
-            dependencies: ["sabine-wren"]),
+            name: "SabineWrenTests",
+            dependencies: ["SabineWren"]),
     ]
 )
