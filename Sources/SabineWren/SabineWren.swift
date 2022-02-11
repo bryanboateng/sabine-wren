@@ -4,37 +4,75 @@ import Foundation
 
 @main
 struct SabineWren: ParsableCommand {
-    @Argument(help: "File 1", transform: URL.init(fileURLWithPath:))
-    var file1: URL
-    
-    @Argument(help: "File 2", transform: URL.init(fileURLWithPath:))
-    var file2: URL
+    @Argument(help: "Folder", transform: URL.init(fileURLWithPath:))
+    var folder: URL
     
     mutating func validate() throws {
-        try validateFileExists(atURL: file1)
-        try validateFileExists(atURL: file2)
+        try validateFolderExists(atURL: folder)
     }
     
-    private func validateFileExists(atURL url: URL) throws {
+    private func validateFolderExists(atURL url: URL) throws {
         let path = url.path
         guard FileManager.default.fileExists(atPath: path) else {
-            throw ValidationError("File does not exist at \(path)")
+            throw ValidationError("Foldeer does not exist at \(path)")
         }
     }
     
     func run() throws {
-        let lines1: OrderedSet = try getLinesFromFile(atURL: file1)
-        let lines2: OrderedSet = try getLinesFromFile(atURL: file2)
+        let configJSONData = try String(contentsOf: folder.appendingPathComponent("config.json")).data(using: .utf8)!
+        let config = try JSONDecoder().decode(Config.self, from: configJSONData)
         
-        let intersectingLines = lines1.intersection(lines2)
-        print(intersectingLines)
-        try lines1
-            .subtracting(intersectingLines)
-            .joined(separator: "\n")
-            .write(toFile: file1.path, atomically: true, encoding: .utf8)
+        var result = try config.categories
+            .reduce(into: OrderedDictionary<String, OrderedSet<String>>()) { partialResult, category in
+                let symbols = try getSymbols(fromFile: category.file)
+                partialResult[category.name] = OrderedSet(
+                    symbols
+                        .filter { symbol in
+                            !symbolIsFilledVariant(symbol, allSymbols: symbols)
+                        }
+                )
+            }
+        result[config.remainderCategory.name] = try getRemainingSymbols(config: config, existingResult: result)
+        
+        try JSONEncoder()
+            .encode(result)
+            .write(to: folder.appendingPathComponent("result.json"))
+    }
+    private func getSymbols(fromFile filename: String) throws -> OrderedSet<String> {
+        let fileURL = folder
+            .appendingPathComponent("categories", isDirectory: true)
+            .appendingPathComponent(filename)
+        return try getLinesFromFile(atURL: fileURL)
     }
     
     private func getLinesFromFile(atURL url: URL) throws -> OrderedSet<String> {
         return try OrderedSet(String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n"))
+    }
+    
+    private func symbolIsFilledVariant(_ symbol: String, allSymbols symbols: OrderedSet<String>) -> Bool {
+        if symbol.contains(".fill") {
+            return symbols.contains(symbol.replacingOccurrences(of: ".fill", with: ""))
+        }
+        return false
+    }
+    
+    private func getRemainingSymbols(config: Config, existingResult result: OrderedDictionary<String, OrderedSet<String>>) throws -> OrderedSet<String> {
+        let symbols = try config.remainderCategory.files
+            .reduce(OrderedSet<String>()) { partialResult, file in
+                return try partialResult.union(getSymbols(fromFile: file))
+            }
+        try JSONEncoder()
+            .encode(symbols)
+            .write(to: folder.appendingPathComponent("mvp.json"))
+        let symbolsFiltered = symbols
+            .filter { symbol in
+                !symbolIsFilledVariant(symbol, allSymbols: symbols)
+            }
+        return OrderedSet(symbolsFiltered)
+            .subtracting(
+                result.reduce(OrderedSet<String>()) { (partialResult: OrderedSet<String>, resultElement: (category: String, symbols: OrderedSet<String>)) in
+                    partialResult.union(resultElement.symbols)
+                }
+            )
     }
 }
